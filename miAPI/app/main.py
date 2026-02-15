@@ -67,30 +67,30 @@ async def crear_usuario(usuario:dict):
         
     }
 
-@app.put("/v1/usuarios/",tags=["CRUD HTTP"],status_code=status.HTTP_204_NO_CONTENT)
+@app.put("/v1/usuarios/",tags=["CRUD HTTP"],status_code=200)
 async def Actualizar_usuario(usuario:dict):
-    for usr in usuarios:
+    for index, usr in enumerate(usuarios):
         if usr["id"] == usuario.get("id"):
-            usuarios.append(usuario)
+            usuarios[index]=usuario     
             return{
                 "mensaje":"usuario Actualizado",
                 "Usuario":usuario
             }
-        raise HTTPException(
-            status_code=400,
-            detail="El id no existe"
-        )   
+    raise HTTPException(
+        status_code=400,
+        detail="El id no existe"
+    )   
     
 @app.delete("/v1/usuarios/",tags=["CRUD HTTP"])
 async def Eliminar_usuario(usuario:dict):
-    for usr in usuarios:
+    for index, usr in enumerate(usuarios):
         if usr["id"] == usuario.get("id"):
-            usuarios.pop(usuario)
+            eliminado = usuarios.pop(index)
             return{
                 "mensaje":"usuario Eliminado",
-                "Usuario Elminado":usuario
+                "Usuario Elminado":eliminado
             }
-        raise HTTPException(
-            status_code=400,
-            detail="Id no existente"
-        )
+    raise HTTPException(
+        status_code=400,
+        detail="Id no existente"
+    )
