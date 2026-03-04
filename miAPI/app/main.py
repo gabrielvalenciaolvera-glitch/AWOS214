@@ -1,8 +1,10 @@
 #Importaciones
-from fastapi import FastAPI, status, HTTPException
+from fastapi import FastAPI, status, HTTPException, Depends
 import asyncio
 from typing import Optional
-
+from pydantic import BaseModel,Field
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 #Instancia del servidor
 app = FastAPI(title="MI primera fukin API",
               description="Gabriel Valencia Olvera, la mejor fukin API",
@@ -15,6 +17,34 @@ usuarios=[
     {"id":2,"nombre":"Pepe","edad":31},
     {"id":3,"nombre":"Diego","edad":21},
 ]
+
+
+#modelo de validacion pydantic
+
+class usuario_create(BaseModel):
+    id: int = Field(..., gt=0, description="Identificador")
+    nombre: str = Field(..., min_length=3, max_length=50, example="Gabriel")
+    edad: int = Field(..., ge=1, le=123, description="Edad valida entre 1 y 123")
+
+
+
+
+#segudirdad HTTP Basic
+
+security= HTTPBasic()
+
+def verificar_Peticion(credenciales:HTTPBasicCredentials=Depends(security)):
+    userAuth = secrets.compare_digest(credenciales.username, "Gabriel")
+    passAuth = secrets.compare_digest(credenciales.password, "123456")
+
+    if not(userAuth and passAuth):
+        raise HTTPException(
+            status_code= status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales no Autorizadas"
+        )
+    return credenciales.username
+
+
 
 #Endpoints
 @app.get("/",tags=["Inicio"])
@@ -43,7 +73,7 @@ async def consultaTodos(id:Optional[int]=None):
         return{"mensaje":"No se proporciono id"}   
 
 @app.get("/v1/usuarios/",tags=["CRUD HTTP"])
-async def leer_usuarios():
+async def leer_usuarios ():
     return{
         "status":"200",
         "total":len(usuarios),
@@ -51,46 +81,45 @@ async def leer_usuarios():
     }
 
 
-
-@app.post("/v1/usuarios/",tags=["CRUD HTTP"],status_code=status.HTTP_201_CREATED)
-async def crear_usuario(usuario:dict):
+@app.post("/V1/usuarios/", tags=['CRUD HTTP'], status_code=status.HTTP_201_CREATED)
+async def crear_usuario(usuario:usuario_create):
     for usr in usuarios:
-        if usr["id"] == usuario.get("id"):
+        if usr["id"] == usuario.id:
             raise HTTPException(
                 status_code=400,
                 detail="El id ya existe"
             )
     usuarios.append(usuario)
-    return  {
-        "mensaje":"Usuario Agregado",
-        "Usuario":usuario
-        
+    return{
+        "mensaje": "Usuario agregado",
+        "usuario": usuario
     }
 
-@app.put("/v1/usuarios/",tags=["CRUD HTTP"],status_code=200)
-async def Actualizar_usuario(usuario:dict):
-    for index, usr in enumerate(usuarios):
-        if usr["id"] == usuario.get("id"):
-            usuarios[index]=usuario     
+
+@app.put("/V1/usuarios/", tags=['CRUD HTTP'], status_code=status.HTTP_200_OK)
+async def actualizar_usuario(id:int, usuario_actualizado:dict):
+    for usuario in usuarios:
+        if usuario["id"] == id:
+            usuario.update(usuario_actualizado)
             return{
-                "mensaje":"usuario Actualizado",
-                "Usuario":usuario
+                "mensaje": "Usuario actualizado",
+                "usuario": usuario
             }
     raise HTTPException(
-        status_code=400,
-        detail="El id no existe"
-    )   
-    
-@app.delete("/v1/usuarios/",tags=["CRUD HTTP"])
-async def Eliminar_usuario(usuario:dict):
-    for index, usr in enumerate(usuarios):
-        if usr["id"] == usuario.get("id"):
-            eliminado = usuarios.pop(index)
+        status_code=400, 
+        detail="Usuario no encontrado"
+    )
+
+@app.delete("/V1/usuarios/", tags=['CRUD HTTP'], status_code=status.HTTP_200_OK)
+async def eliminar_usuario(id:int, userAuth:str= Depends(verificar_Peticion)):
+    for usuario in usuarios:
+        if usuario["id"] == id:
+            usuarios.remove(usuario)
             return{
-                "mensaje":"usuario Eliminado",
-                "Usuario Elminado":eliminado
-            }
+                "mensaje": f"Usuario eliminado correctamente por: {userAuth}",
+                "usuario": usuario
+            } 
     raise HTTPException(
-        status_code=400,
-        detail="Id no existente"
+        status_code=400, 
+        detail="Usuario no encontrado"
     )
