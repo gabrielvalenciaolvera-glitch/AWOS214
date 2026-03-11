@@ -3,16 +3,27 @@ from fastapi import FastAPI, status, HTTPException, Depends
 import asyncio
 from typing import Optional
 from pydantic import BaseModel,Field
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import secrets
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWSError, jwt
+from datetime import datetime , timedelta
+from passlib.context import CryptContext
+
+
 #Instancia del servidor
-app = FastAPI(title="MI primera fukin API",
-              description="Gabriel Valencia Olvera, la mejor fukin API",
+app = FastAPI(title=" API con JWT",
+              description="Gabriel Valencia Olvera",
               version="1.0.0"
               )
 
 
-#levantar o construir contenedor "docker compose up --build"
+# Configuración JWT
+
+SECRET_KEY = "mi_clave_super_secreta"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30 #máximmo 30 minutos
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 #TB ficticia
 usuarios=[
@@ -20,6 +31,15 @@ usuarios=[
     {"id":2,"nombre":"Pepe","edad":31},
     {"id":3,"nombre":"Diego","edad":21},
 ]
+
+#TB ficticia con un usuario y contraseña
+
+fake_users_db = {
+    "Gabriel":{
+        "username":"Gabriel",
+        "hashed_password": pwd_context.hash("1234")
+    }
+}
 
 
 #modelo de validacion pydantic
@@ -31,21 +51,6 @@ class usuario_create(BaseModel):
 
 
 
-
-#segudirdad HTTP Basic
-
-security= HTTPBasic()
-
-def verificar_Peticion(credenciales:HTTPBasicCredentials=Depends(security)):
-    userAuth = secrets.compare_digest(credenciales.username, "Gabriel")
-    passAuth = secrets.compare_digest(credenciales.password, "123456")
-
-    if not(userAuth and passAuth):
-        raise HTTPException(
-            status_code= status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales no Autorizadas"
-        )
-    return credenciales.username
 
 
 
@@ -114,12 +119,12 @@ async def actualizar_usuario(id:int, usuario_actualizado:dict):
     )
 
 @app.delete("/V1/usuarios/", tags=['CRUD HTTP'], status_code=status.HTTP_200_OK)
-async def eliminar_usuario(id:int, userAuth:str= Depends(verificar_Peticion)):
+async def eliminar_usuario(id:int):
     for usuario in usuarios:
         if usuario["id"] == id:
             usuarios.remove(usuario)
             return{
-                "mensaje": f"Usuario eliminado correctamente por: {userAuth}",
+                "mensaje": "Usuario eliminado correctamente",
                 "usuario": usuario
             } 
     raise HTTPException(
