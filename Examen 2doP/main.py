@@ -1,7 +1,10 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Literal
 from datetime import datetime
+from pydantic import BaseModel,Field
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 
 app = FastAPI(
     title="examen 2P",
@@ -15,13 +18,10 @@ async def bienvenida():
 
 class Ticket(BaseModel):
     id: int
+    usuario: str = Field(min_length=5)
     descripcion: str = Field(min_length=26, max_length=200)
     prioridad: Literal["baja", "media","Alta"] = "baja"
-    estado: Literal["pentiente", "resuelto"] = "pendiente"
-
-class Usuario(BaseModel):
-    nombre: str = Field(min_length=5)
-    correo: EmailStr
+    estado: Literal["pendiente", "resuelto"] = "pendiente"
 
 
 
@@ -30,6 +30,20 @@ class Resuelto(BaseModel):
     Ticket_id: int
     estado: Literal["Pendiente", "resuelto"]
 
+
+
+security= HTTPBasic()
+
+def verificar_Peticion(credenciales:HTTPBasicCredentials=Depends(security)):
+    userAuth = secrets.compare_digest(credenciales.username, "soporte")
+    passAuth = secrets.compare_digest(credenciales.password, "4321")
+
+    if not(userAuth and passAuth):
+        raise HTTPException(
+            status_code= status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales no Autorizadas"
+        )
+    return credenciales.username
 
 Tickets: List[Ticket] = []
 Resueltos: List[Resuelto] = []
@@ -54,11 +68,11 @@ async def registrar_ticket(Ticket: Ticket):
 async def listar_tickets():
     return {
         "total": len(Tickets),
-        "libros": Tickets
+        "Tickets": Tickets
     }
 
 @app.get("/v1/ticket/buscar/{id}")
-async def buscar_ticket(id: str):
+async def buscar_ticket(id: str, userAuth:str= Depends(verificar_Peticion)):
 
     resultados = [l for l in Tickets if l.id.lower() == id.lower()]
 
@@ -71,60 +85,38 @@ async def buscar_ticket(id: str):
     return resultados
 
 
-@app.post("/v1/ticket/", status_code=status.HTTP_201_CREATED)
-async def resolver_Ticket(libro_id: int, usuario: Usuario):
 
-    for libro in Libros:
-
-        if libro.id == libro_id:
-
-            if libro.estado == "prestado":
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="El libro ya está prestado"
-                )
-
-            libro.estado = "prestado"
-
-            nuevo_prestamo = Prestamo(
-                id_prestamo=len(Prestamos) + 1,
-                libro_id=libro_id,
-                usuario=usuario,
-                estado="prestado"
-            )
-
-            Prestamos.append(nuevo_prestamo)
-            return nuevo_prestamo
-
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Libro no encontrado"
-    )
-
+@app.put("/v1/ticket/",status_code=status.HTTP_204_NO_CONTENT)
+async def Actualizar_Ticket(Ticket:Ticket, userAuth:str= Depends(verificar_Peticion)):
+    for l in Tickets:
+        if l.id == Ticket.id:
+            Tickets.append(Ticket)
+            return{
+                "mensaje":"Ticket Actualizado",
+                "Usuario":Ticket
+            }
+        raise HTTPException(
+            status_code=400,
+            detail="El id no existe"
+        )   
+    
+@app.delete("/v1/Ticket/")
+async def Eliminar_Ticket(Ticket:Ticket):
+    for l in Tickets:
+        if l.id == Ticket.id:
+            Tickets.pop(Ticket)
+            return{
+                "mensaje":"Ticket Eliminado",
+                "Ticket Elminado":Ticket
+            }
+        raise HTTPException(
+            status_code=400,
+            detail="Id no existente"
+        )
 
 
 
 
 
 
-
-
-
-
-
-
-
-@app.delete("/v1/ticket/{id_Ticket}", status_code=status.HTTP_200_OK)
-async def eliminar_Ticket(id_Ticket: int):
-
-    for index, Ticket in enumerate(Tickets):
-
-        if Ticket.id_Ticket == id_prestamo:
-            Prestamos.pop(index)
-            return {"mensaje": "Préstamo eliminado correctamente"}
-
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail="El registro de préstamo no existe"
-    )
 
