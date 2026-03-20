@@ -4,7 +4,7 @@ import asyncio
 from typing import Optional
 from pydantic import BaseModel,Field
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWSError, jwt
+from jose import JWTError, jwt
 from datetime import datetime , timedelta
 from passlib.context import CryptContext
 
@@ -41,6 +41,41 @@ fake_users_db = {
     }
 }
 
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+@app.post("/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = fake_users_db.get(form_data.username)
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Usuario incorrecto")
+
+    if not pwd_context.verify(form_data.password, user["hashed_password"]):
+        raise HTTPException(status_code=400, detail="Contraseña incorrecta")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    access_token = create_access_token(
+        data={"sub": user["username"]},
+        expires_delta=access_token_expires
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        return username
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
 
 #modelo de validacion pydantic
 
@@ -97,15 +132,16 @@ async def crear_usuario(usuario:usuario_create):
                 status_code=400,
                 detail="El id ya existe"
             )
-    usuarios.append(usuario)
+    usuarios.append(usuario.dict())
     return{
         "mensaje": "Usuario agregado",
         "usuario": usuario
     }
 
 
-@app.put("/V1/usuarios/", tags=['CRUD HTTP'], status_code=status.HTTP_200_OK)
-async def actualizar_usuario(id:int, usuario_actualizado:dict):
+@app.put("/V1/usuarios/", tags=['CRUD HTTP'])
+async def actualizar_usuario(id:int, usuario_actualizado:dict, 
+                             current_user: str = Depends(get_current_user)):
     for usuario in usuarios:
         if usuario["id"] == id:
             usuario.update(usuario_actualizado)
@@ -113,13 +149,13 @@ async def actualizar_usuario(id:int, usuario_actualizado:dict):
                 "mensaje": "Usuario actualizado",
                 "usuario": usuario
             }
-    raise HTTPException(
-        status_code=400, 
-        detail="Usuario no encontrado"
-    )
+    raise HTTPException(status_code=400, detail="Usuario no encontrado")
+
+
 
 @app.delete("/V1/usuarios/", tags=['CRUD HTTP'], status_code=status.HTTP_200_OK)
-async def eliminar_usuario(id:int):
+async def eliminar_usuario(id:int, 
+                          current_user: str = Depends(get_current_user)):
     for usuario in usuarios:
         if usuario["id"] == id:
             usuarios.remove(usuario)
